@@ -4,13 +4,10 @@ import random
 from telebot import types
 import time
 
-bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
+bot = telebot.TeleBot(
 def db_config():
     return {
-        'host': 'localhost',
-        'database': 'girala',
-        'user': 'maria',
-        'password': '13243122'
+
     }
 def main():
     @bot.callback_query_handler(func=lambda call: call.data.startswith('subcategoria_'))
