@@ -4,15 +4,11 @@ import random
 from telebot import types
 import time
 
-bot = telebot.TeleBot("6040133674:AAFicE4ADoMdHgvo6XyXT1WBVfz_7VpSCvc")
-
+bot = telebot.TeleBot
 
 def db_config():
     return {
-        'host': 'localhost',
-        'database': 'girala',
-        'user': 'maria',
-        'password': '13243122'
+     
     }
 
 
