@@ -9,7 +9,7 @@ bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
 
 def db_config():
     return {
-        'host': 'localhost',
+        'host': '26.121.107.216',
         'database': 'girala',
         'user': 'maria',
         'password': '13243122'
@@ -269,7 +269,9 @@ def buscar_subcategorias(categoria, user_id=None):
         conn = mysql.connector.connect(**db_config())
         cursor = conn.cursor()
 
-        if user_id is None:
+        if categoria == 'geral':
+            cursor.execute('SELECT DISTINCT subcategoria FROM personagens') 
+        elif user_id is None:
             cursor.execute('SELECT DISTINCT subcategoria FROM personagens WHERE categoria = %s', (categoria,))
         else:
             cursor.execute('SELECT DISTINCT subcategoria FROM personagens WHERE categoria = %s AND user_id != %s',
@@ -439,10 +441,6 @@ def start_comando(message):
 
 
 @bot.message_handler(commands=['gid'])
-
-
-
-
 def gid_command(message):
     try:
         conn = mysql.connector.connect(**db_config())
@@ -568,55 +566,42 @@ def ggirar(message):
 
     # Primeira coluna
     primeira_coluna = [
-        telebot.types.InlineKeyboardButton(text="🍃  Música", callback_data='gmusica'),
-        telebot.types.InlineKeyboardButton(text="🍄  Filmes", callback_data='gfilme'),
-        telebot.types.InlineKeyboardButton(text="🍁  Jogos", callback_data='gjogo')
+        telebot.types.InlineKeyboardButton(text="🍃  Música", callback_data='ggirar_musica'),
+        telebot.types.InlineKeyboardButton(text="🍄  Filmes", callback_data='ggirar_filmes'),
+        telebot.types.InlineKeyboardButton(text="🍁  Jogos", callback_data='ggirar_jogos')
     ]
 
     # Segunda coluna
     segunda_coluna = [
-        telebot.types.InlineKeyboardButton(text="🪹  Animanga", callback_data='ganime'),
-        telebot.types.InlineKeyboardButton(text="🪨  Séries", callback_data='gseries'),
-        telebot.types.InlineKeyboardButton(text="🌾  Miscelânea", callback_data='gmisc')
+        telebot.types.InlineKeyboardButton(text="🪹  Animanga", callback_data='ggirar_animanga'),
+        telebot.types.InlineKeyboardButton(text="🪨  Séries", callback_data='ggirar_series'),
+        telebot.types.InlineKeyboardButton(text="🌾  Miscelânea", callback_data='ggirar_miscelanea')
     ]
 
     keyboard.add(*primeira_coluna)
     keyboard.add(*segunda_coluna)
 
     # Botão "Geral"
-    keyboard.row(telebot.types.InlineKeyboardButton(text="🫧  Geral", callback_data='ggeral'))
+    keyboard.row(telebot.types.InlineKeyboardButton(text="🫧  Geral", callback_data='ggirar_geral'))
 
     # Imagem
     image_path = "imagens/Normal/halsey.jpeg"  # Defina o caminho correto para a imagem
     with open(image_path, 'rb') as photo:
-
         bot.send_photo(message.chat.id, photo, caption='Selecione uma categoria:', reply_markup=keyboard)
-
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
+    print("callback", call.data)
     if call.message:
-        if call.data == 'gmusica':
-            gmusica(call.message)
+        if call.data.startswith('ggirar_'):
+            categoria = call.data.replace('ggirar_', '')
+            categoria_handler(call.message, categoria)
 
-        elif call.data == 'gfilme':
-            gfilme(call.message)
+        elif call.data.startswith('gmusica'):
+            subcategoria = call.data.replace('gmusica_', '')
+            subcategoria_handler(call.message, subcategoria)
 
-        elif call.data == 'gjogo':
-            gjogo(call.message)
-
-        elif call.data == 'ganime':
-            ganime(call.message)
-
-        elif call.data == 'gserie':
-            gserie(call.message)
-
-        elif call.data == 'gmisc':
-            gmisc(call.message)
-
-        elif call.data == 'ggeral':
-            ggeral(call.message)
 
 
 @bot.message_handler(commands=['armazem'])
@@ -636,31 +621,29 @@ def armazem_command(message):
     else:
         bot.send_message(message.chat.id, "Você não possui cartas no armazém.")
 
-def gmusica(message):
+def categoria_handler(message, categoria):
     try:
         conn = mysql.connector.connect(**db_config())
         cursor = conn.cursor()
 
-        subcategorias = buscar_subcategorias("musica")
+        subcategorias = buscar_subcategorias(categoria)
+        
         subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
 
         if subcategorias:
             resposta = "E o universo sorteou:\n\n"
             subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
 
-            resposta_subcategorias = ' '.join([f"{i}-{subcategoria}" for i, subcategoria in enumerate(subcategorias_aleatorias, start=1)])
-            resposta += resposta_subcategorias
-
             keyboard = telebot.types.InlineKeyboardMarkup()
 
-            for i in range(1, 5):
-                button = telebot.types.InlineKeyboardButton(text=str(i), callback_data=str(i))
+            for i in range(0, 4):
+                button = telebot.types.InlineKeyboardButton(text=subcategorias_aleatorias[i], callback_data="gmusica_"+subcategorias_aleatorias[i])
                 keyboard.add(button)
 
             bot.send_message(message.chat.id, resposta, reply_markup=keyboard)
 
         else:
-            bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Música'.")
+            bot.send_message(message.chat.id, f"Nenhuma subcategoria encontrada para a categoria '{categoria}'.")
 
     except mysql.connector.Error as err:
         bot.send_message(message.chat.id, f"Erro ao buscar subcategorias: {err}")
@@ -670,6 +653,21 @@ def gmusica(message):
             cursor.close()
         if 'conn' in locals():
             conn.close()
+
+
+def subcategoria_handler(message, subcategoria):
+    print('subcategoria_handler', subcategoria)
+
+    id, nome, imagem = buscar_carta_aleatoria_por_subcategoria(subcategoria)
+    
+    print('carta', imagem)
+
+    if imagem == None:
+        bot.send_message(message.chat.id, f"{nome} - (A carta não tem imagem)")
+    else:
+        with open(imagem, 'rb') as photo:
+            bot.send_photo(message.chat.id, photo, caption=nome)
+
 
 
 
@@ -687,116 +685,6 @@ def callback_handler(call):
         resposta = "Opção inválida."
 
     bot.answer_callback_query(call.id, resposta)
-
-@bot.message_handler(commands=['gfilme'])
-def gfilme(message):
-    subcategorias = buscar_subcategorias("filmes")
-    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
-
-    if subcategorias:
-        resposta = "E o universo sorteou:\n \n"
-        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            resposta += f"{i} {subcategoria}\n"
-        markup = types.InlineKeyboardMarkup()
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            button = types.InlineKeyboardButton(text=str(i), callback_data=str(i))
-            markup.add(button)
-        subresposta = "\nQual desses você vai escolher?\n"
-        bot.send_message(message.chat.id, resposta + subresposta, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Filmes'.")
-
-
-@bot.message_handler(commands=['gseries'])
-def gserie(message):
-    subcategorias = buscar_subcategorias("series")
-    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
-
-    if subcategorias:
-        resposta = "E o universo sorteou:\n"
-        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            resposta += f"{i} {subcategoria}\n"
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("1", "2", "3", "4")
-
-        bot.send_message(message.chat.id, resposta, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Séries'.")
-
-
-@bot.message_handler(commands=['gjogo'])
-def gjogo(message):
-    subcategorias = buscar_subcategorias("jogos")
-    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
-
-    if subcategorias:
-        resposta = "E o universo sorteou:\n"
-        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            resposta += f"{i} {subcategoria}\n"
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("1", "2", "3", "4")
-
-        bot.send_message(message.chat.id, resposta, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Jogos'.")
-
-
-@bot.message_handler(commands=['ganime'])
-def ganime(message):
-    subcategorias = buscar_subcategorias("animanga")
-    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
-
-    if subcategorias:
-        resposta = "E o universo sorteou:\n"
-        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            resposta += f"{i} {subcategoria}\n"
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("1", "2", "3", "4")
-
-        bot.send_message(message.chat.id, resposta, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Animanga'.")
-
-
-@bot.message_handler(commands=['gmisc'])
-def gmisc(message, cursor=None, conn=None):
-    subcategorias = buscar_subcategorias("miscelanea")
-    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
-
-    if subcategorias:
-        resposta = "E o universo sorteou:\n"
-        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
-        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
-            resposta += f"{i} {subcategoria}\n"
-
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("1", "2", "3", "4")
-
-        bot.send_message(message.chat.id, resposta, reply_markup=markup)
-    else:
-        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Miscelânea'.")
-
-    @bot.message_handler(commands=['gserial'])
-    def handle_gserie_command(message):
-        subcategoria = message.text.replace('/gserial', '').strip()
-        lista_personagens = consultar_personagens_subcategoria(subcategoria)
-
-        if isinstance(lista_personagens, list):
-            response = "\n".join(lista_personagens)
-        else:
-            response = lista_personagens
-
-        bot.reply_to(message, response)
-
-    cursor.close()
-    conn.close()
 
 
 
