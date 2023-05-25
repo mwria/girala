@@ -664,9 +664,14 @@ def subcategoria_handler(message, subcategoria):
 
     if imagem == None:
         bot.send_message(message.chat.id, f"{nome} - (A carta não tem imagem)")
-    else:
+    elif imagem.startswith('imagens/'):
         with open(imagem, 'rb') as photo:
             bot.send_photo(message.chat.id, photo, caption=nome)
+    else:
+        #aqui o imagem é uma url, ele vai ter que retonar a mensagem como link
+        #é possivel baixa a imagem e enviar como foto, mas acho isso desnecessario e vai gastar banda da internet
+        bot.send_photo(message.chat.id, imagem, caption=nome)
+        
 
 
 
