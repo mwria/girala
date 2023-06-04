@@ -1,14 +1,12 @@
+
 import telebot
 import mysql.connector
 import random
 from telebot import types
-import time
-import requests
-
+from obtercartas import obter_carta_aleatoria, obter_cartas_por_subcategoria, ler_botao_e_buscar_carta
+from consultas import consultar_personagens_subcategoria,consultar_dados, consultar_personagem_por_nome, consultar_personagem_por_nome
 
 bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
-
-
 def db_config():
     return {
         'host': '26.121.107.216',
@@ -28,35 +26,6 @@ def main():
     def handle_iduser_command(message):
         user_id = message.from_user.id
         bot.reply_to(message, f"Seu ID de usuário é: {user_id}")
-
-    def consultar_personagem_por_nome(nome):
-        try:
-            con = mysql.connector.connect(**db_config())
-            cursor = con.cursor()
-
-            query = "SELECT id, nome, imagem FROM personagens WHERE nome LIKE %s"
-            cursor.execute(query, (f"%{nome}%",))
-            result = cursor.fetchone()
-
-            # Descartar resultados não lidos
-            cursor.fetchall()
-
-            if result:
-                id, nome, imagem = result
-                return f"ID: {id}\nNome: {nome}\n", imagem
-
-            else:
-                return "Nenhum resultado encontrado para o nome fornecido."
-
-        except mysql.connector.Error as err:
-            return f"Erro ao executar a consulta: {err}"
-
-        finally:
-            if 'cursor' in locals():
-                cursor.close()
-            if 'con' in locals():
-                con.close()
-
 
 
 def execute_query(query):
@@ -91,60 +60,6 @@ def buscar_categorias():
             conn.close()
 
 
-def consultar_dados(id):
-    try:
-        con = mysql.connector.connect(**db_config())
-        cursor = con.cursor()
-
-        query = "SELECT id, nome, imagem, subcategoria FROM personagens WHERE id = %s"
-        cursor.execute(query, (id,))
-        result = cursor.fetchone()
-
-        # Descartar resultados não lidos
-        cursor.fetchall()
-
-        if result:
-            id, nome, imagem, subcategoria = result
-            return f"💌 | Personagem:\n\n{id}. {nome} \nde {subcategoria}", imagem, nome, subcategoria
-        else:
-            return "Nenhum resultado encontrado para o ID fornecido.", None, None, None
-
-    except mysql.connector.Error as err:
-        return f"Erro ao executar a consulta: {err}", None, None, None
-
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'con' in locals():
-            con.close()
-
-
-def consultar_personagens_subcategoria(subcategoria):
-    try:
-        con = mysql.connector.connect(**db_config())
-        cursor = con.cursor()
-
-        query = "SELECT id, nome FROM personagens WHERE subcategoria = %s"
-        cursor.execute(query, (subcategoria,))
-        results = cursor.fetchall()
-
-        if results:
-            lista_personagens = [f"{id}. {nome}" for id, nome in results]
-            return lista_personagens
-
-        else:
-            return "Nenhum resultado encontrado para a subcategoria fornecida."
-
-    except mysql.connector.Error as err:
-        return f"Erro ao executar a consulta: {err}"
-
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'con' in locals():
-            con.close()
-
-
 def consultar_personagens_por_subcategoria(subcategoria):
     try:
         con = mysql.connector.connect(**db_config())
@@ -173,7 +88,7 @@ def consultar_personagens_por_subcategoria(subcategoria):
 
 def buscar_cartas_usuario(id_usuario):
     try:
-        id_usuario = message.from_user.id
+
         conn = mysql.connector.connect(**db_config())
         cursor = conn.cursor()
 
@@ -199,101 +114,6 @@ def buscar_cartas_usuario(id_usuario):
             cursor.close()
         if 'conn' in locals():
             conn.close()
-
-
-def consultar_personagem_por_nome(nome: object) -> object:
-    try:
-        con = mysql.connector.connect(**db_config())
-        cursor = con.cursor()
-
-        query = "SELECT id, nome, imagem, subcategoria FROM personagens WHERE nome LIKE %s"
-        cursor.execute(query, (f"%{nome}%",))
-        result = cursor.fetchone()
-
-        # Descartar resultados não lidos
-        cursor.fetchall()
-
-        if result:
-            id, nome, imagem, subcategoria = result
-            return f"💌 | Personagem:\n\n{id}. {nome} \nde {subcategoria}", imagem
-
-        else:
-            return "Nenhum resultado encontrado para o nome fornecido."
-
-    except mysql.connector.Error as err:
-        return f"Erro ao executar a consulta: {err}"
-
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'con' in locals():
-            con.close()
-
-
-def obter_carta_aleatoria(subcategoria, banco_de_dados):
-    # Verificar se o usuário da tabela "usuarios" é diferente do da tabela "inventario"
-    if verificar_usuario_diferente():
-        # Gerar uma carta aleatória apenas para o usuário da tabela "usuarios"
-        query = "SELECT nome FROM usuarios ORDER BY RAND() LIMIT 1"
-    else:
-        # Gerar uma carta aleatória para qualquer usuário
-        query = "SELECT nome FROM usuarios JOIN inventario ON usuarios.id_usuario = inventario.id_usuario ORDER BY RAND() LIMIT 1"
-
-    cartas_disponiveis = [carta for carta in banco_de_dados if carta['subcategoria'] == subcategoria]
-    carta_aleatoria = random.choice(cartas_disponiveis)
-
-    # Executar a consulta SQL para obter a carta aleatória
-    resultado = executar_consulta_sql(query)
-    if resultado:
-        carta_aleatoria['nome'] = resultado[0]['nome']
-
-    return carta_aleatoria
-
-
-def obter_cartas_por_subcategoria(subcategoria, conn):
-    cursor = conn.cursor()
-    query = "SELECT id, nome, imagem FROM personagens WHERE subcategoria = %s"
-    cursor.execute(query, (subcategoria,))
-    result = cursor.fetchall()
-    cursor.close()
-    return result
-
-def ler_botao_e_buscar_carta(numero_botao, texto, message):
-    try:
-        conn = mysql.connector.connect(**db_config())
-        cursor = conn.cursor()
-
-        # Extrair a subcategoria do texto
-        subcategoria = texto.split('-')[1].strip()
-
-        # Buscar cartas com a subcategoria correspondente
-        query = "SELECT id, nome, imagem FROM cartas WHERE subcategoria = %s"
-        cursor.execute(query, (subcategoria,))
-        cartas = cursor.fetchall()
-
-        if cartas:
-            # Selecionar uma carta aleatória
-            carta_aleatoria = random.choice(cartas)
-            id_carta, nome_carta, imagem_carta = carta_aleatoria
-
-            resposta = f"Carta encontrada:\nID: {id_carta}\nNome: {nome_carta}"
-
-            # Enviar a imagem da carta
-            with open(imagem_carta, 'rb') as photo:
-                bot.send_photo(message.chat.id, photo, caption=resposta)
-
-        else:
-            bot.send_message(message.chat.id, f"Nenhuma carta encontrada para a subcategoria '{subcategoria}'.")
-
-    except mysql.connector.Error as err:
-        bot.send_message(message.chat.id, f"Erro ao buscar cartas: {err}")
-
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
 
 def buscar_subcategorias(categoria, user_id=None):
     try:
@@ -323,15 +143,6 @@ def buscar_subcategorias(categoria, user_id=None):
             conn.close()
 
 categorias = buscar_categorias()
-
-async def download_image(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                return await response.read()
-            else:
-                return None
-
 
 
 # Função para verificar se o ID do usuário já existe na tabela 'usuarios'
@@ -521,8 +332,7 @@ def gid_command(message):
 
         # Send the image if available
         if imagem is not None:
-            with open(imagem, 'rb') as photo:
-                bot.send_photo(chat_id=message.chat.id, photo=photo)
+            bot.send_photo(message.chat.id, imagem, caption=nome)
     except mysql.connector.Error as err:
         bot.send_message(message.chat.id, f"Erro ao buscar dados da carta: {err}")
 
@@ -537,8 +347,13 @@ def gnome_command(message):
     nome = message.text.replace('/gnome', '').strip()
 
 
-def add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria):
+def add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria):  # Add 'call' as a parameter
     try:
+
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+
         # Check if the card already exists in the user's inventory
         cursor.execute("SELECT * FROM inventario WHERE id_personagem = %s AND id_usuario = %s",
                        (id_personagem, id_usuario))
@@ -682,6 +497,56 @@ def callback_handler(call):
             id_personagem = results[0][0]
 
             subcategoria_handler(message, subcategoria, cursor, conn, id_personagem, id_usuario)
+@bot.message_handler(commands=['iscas'])
+def iscas_command(message):
+    message_id = message.message_id
+    quantidadegiros(message_id, message)  # Pass the 'message' object as an argument
+
+def quantidadegiros(message_id, message):  # Add 'message' as a parameter
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+        # Consultar o valor de "ultimogiro" e "qntdgiros" com base no "id_mensagem"
+        cursor.execute("SELECT ultimogiro, qntdgiros FROM giros WHERE id_mensagem = %s", (message_id,))
+        result = cursor.fetchone()
+
+        if result:
+            ultimogiro, qntdgiros = result
+
+            # Calcular a diferença de tempo em relação ao horário atual
+            horario_atual = datetime.now()
+            diff = horario_atual - ultimogiro
+
+            # Calcular a quantidade de giros a adicionar
+            if qntdgiros == 0:
+                qntdgiros = diff.total_seconds() // 2
+            else:
+                qntdgiros += diff.total_seconds() // 2
+
+            # Atualizar o valor de "ultimogiro" e "qntdgiros" no banco de dados
+            cursor.execute("UPDATE giros SET ultimogiro = %s, qntdgiros = %s WHERE id_mensagem = %s",
+                           (horario_atual, qntdgiros, message_id))
+            conn.commit()
+
+            # Exibir a mensagem com o número de giros
+            bot.send_message(message.chat.id, f"Você tem {qntdgiros} giros.")
+        else:
+            # A mensagem não foi encontrada na tabela giros
+            bot.send_message(message.chat.id, "Mensagem não encontrada.")
+
+
+    except mysql.connector.Error as err:
+
+        bot.send_message(message.chat.id, f"Erro ao consultar os giros: {err}")
+
+
+    finally:
+
+        if 'cursor' in locals():
+            cursor.close()
+
+        if 'conn' in locals():
+            conn.close()
 
 
 @bot.message_handler(commands=['armazem'])
@@ -782,7 +647,8 @@ def subcategoria_handler(message, subcategoria, cursor, conn, id_personagem, id_
         carta_aleatoria = random.choice(cartas_disponiveis)
         id, nome, imagem = carta_aleatoria
 
-        add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria)
+        add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria)  # Pass 'call' as an argument
+
 
         if imagem is None:
             bot.send_message(message.chat.id, f"{nome} - (A carta não tem imagem)")
