@@ -1,4 +1,3 @@
-
 import telebot
 import mysql.connector
 import random
