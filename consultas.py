@@ -1,19 +1,9 @@
 
+from src.configs.DatabaseConfig import db_config
 import telebot
 import mysql.connector
 import random
 from telebot import types
-
-
-bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
-def db_config():
-    return {
-        'host': '26.121.107.216',
-        'database': 'girala',
-        'user': 'maria',
-        'password': '13243122'
-    }
-
 
 def consultar_personagem_por_nome(nome: object) -> object:
     try:

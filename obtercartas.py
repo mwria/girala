@@ -1,18 +1,10 @@
 
+from src.bot.BotConfig import BOT
+from src.configs.DatabaseConfig import db_config
 import telebot
 import mysql.connector
 import random
 from telebot import types
-
-
-bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
-def db_config():
-    return {
-        'host': '26.121.107.216',
-        'database': 'girala',
-        'user': 'maria',
-        'password': '13243122'
-    }
 
 
 def obter_carta_aleatoria(subcategoria, banco_de_dados):
@@ -64,13 +56,13 @@ def ler_botao_e_buscar_carta(numero_botao, texto, message):
 
             # Enviar a imagem da carta
             with open(imagem_carta, 'rb') as photo:
-                bot.send_photo(message.chat.id, photo, caption=resposta)
+                BOT.send_photo(message.chat.id, photo, caption=resposta)
 
         else:
-            bot.send_message(message.chat.id, f"Nenhuma carta encontrada para a subcategoria '{subcategoria}'.")
+            BOT.send_message(message.chat.id, f"Nenhuma carta encontrada para a subcategoria '{subcategoria}'.")
 
     except mysql.connector.Error as err:
-        bot.send_message(message.chat.id, f"Erro ao buscar cartas: {err}")
+        BOT.send_message(message.chat.id, f"Erro ao buscar cartas: {err}")
 
     finally:
         if 'cursor' in locals():
