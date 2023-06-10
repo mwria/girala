@@ -1,0 +1,1031 @@
+
+import telebot
+import mysql.connector
+import random
+from telebot import types
+from obtercartas import obter_carta_aleatoria, obter_cartas_por_subcategoria, ler_botao_e_buscar_carta
+from consultas import consultar_personagens_subcategoria,consultar_dados, consultar_personagem_por_nome, consultar_personagem_por_nome
+
+bot = telebot.TeleBot("6127981599:AAHBe-NzKCLiE7xAn8iI8Kw2DQHG_SDlu1M")
+def db_config():
+    return {
+        'host': '26.121.107.216',
+        'database': 'girala',
+        'user': 'maria',
+        'password': '13243122'
+    }
+
+
+def main():
+    @bot.callback_query_handler(func=lambda call: call.data.startswith('subcategoria_'))
+    def subcategoria_callback(call):
+        subcategoria = call.data.replace('subcategoria_', '')
+        gerar_carta_sorteada(subcategoria, call.message.chat.id)
+
+    @bot.message_handler(commands=['iduser'])
+    def handle_iduser_command(message):
+        user_id = message.from_user.id
+        bot.reply_to(message, f"Seu ID de usuário é: {user_id}")
+
+
+def execute_query(query):
+    conn = mysql.connector.connect(**db_config())
+    cursor = conn.cursor()
+    cursor.execute(query)
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def buscar_categorias():
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT DISTINCT categoria FROM personagens')
+
+        categorias = [row[0] for row in cursor.fetchall()]
+
+        return categorias
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao buscar categorias: {err}")
+        return []
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+def consultar_personagens_por_subcategoria(subcategoria):
+    try:
+        con = mysql.connector.connect(**db_config())
+        cursor = con.cursor()
+
+        query = "SELECT id, nome FROM personagens WHERE subcategoria = %s"
+        cursor.execute(query, (subcategoria,))
+        results = cursor.fetchall()
+
+        if results:
+            lista_personagens = [f"{id}. {nome}" for id, nome in results]
+            return lista_personagens
+
+        else:
+            return "Nenhum resultado encontrado para a subcategoria fornecida."
+
+    except mysql.connector.Error as err:
+        return f"Erro ao executar a consulta: {err}"
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'con' in locals():
+            con.close()
+
+
+def buscar_cartas_usuario(id_usuario):
+    try:
+
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Consulta SQL para buscar os IDs das cartas relacionadas ao ID do usuário
+        query = f"SELECT id_personagem FROM inventario WHERE id_usuario = {id_usuario}"
+        cursor.execute(query)
+
+        # Lista para armazenar os IDs das cartas
+        cartas_usuario = []
+
+        # Obtém os resultados da consulta e adiciona os IDs das cartas à lista
+        for row in cursor.fetchall():
+            id_carta = row[0]
+            cartas_usuario.append(id_carta)
+
+        return cartas_usuario
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao buscar cartas do usuário: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+def buscar_subcategorias(categoria, user_id=None):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        if categoria == 'geral':
+            cursor.execute('SELECT DISTINCT subcategoria FROM personagens')
+        elif user_id is None:
+            cursor.execute('SELECT DISTINCT subcategoria FROM personagens WHERE categoria = %s', (categoria,))
+        else:
+            cursor.execute('SELECT DISTINCT subcategoria FROM personagens WHERE categoria = %s AND user_id != %s',
+                           (categoria, user_id))
+
+        subcategorias = [row[0] for row in cursor.fetchall()]
+
+        return subcategorias
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao buscar subcategorias: {err}")
+        return []
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+categorias = buscar_categorias()
+
+
+# Função para verificar se o ID do usuário já existe na tabela 'usuarios'
+def verificar_id_usuario(id_usuario):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Verificar se o ID do usuário existe na tabela 'usuarios'
+        query = "SELECT * FROM usuarios WHERE id_usuario = %s"
+        cursor.execute(query, (id_usuario,))
+        resultado = cursor.fetchone()
+
+        return resultado is not None
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao verificar ID do usuário: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+# Função para verificar se o nome de usuário já existe na tabela 'usuarios'
+def verificar_nome_usuario(nome_usuario):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Verificar se o nome de usuário já existe na tabela 'usuarios'
+        query = "SELECT * FROM usuarios WHERE nome_usuario = %s"
+        cursor.execute(query, (nome_usuario,))
+        resultado = cursor.fetchone()
+
+        return resultado is not None
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao verificar nome de usuário: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+# Comando /setuser
+@bot.message_handler(commands=['setuser'])
+def setuser_comando(message):
+    # Verificar se o ID do usuário já existe na tabela 'usuarios'
+    if verificar_id_usuario(message.from_user.id):
+        bot.send_message(message.chat.id, "Seu ID de usuário já está registrado.")
+        bot.send_message(message.chat.id, "Por favor, digite um nome de usuário único:")
+        bot.register_next_step_handler(message, processar_nome_usuario)
+    else:
+        bot.send_message(message.chat.id, "Por favor, execute o comando /start primeiro.")
+
+
+# Função para processar o nome de usuário digitado pelo usuário
+def processar_nome_usuario(message):
+    nome_usuario = message.text.strip()
+
+    # Verificar se o nome de usuário já existe na tabela 'usuarios'
+    if verificar_nome_usuario(nome_usuario):
+        bot.send_message(message.chat.id, "O nome de usuário já está em uso.")
+        bot.send_message(message.chat.id, "Por favor, escolha um nome de usuário diferente:")
+        bot.register_next_step_handler(message, processar_nome_usuario)
+    else:
+        try:
+            conn = mysql.connector.connect(**db_config())
+            cursor = conn.cursor()
+
+            # Atualizar a coluna 'nome_usuario' com o nome fornecido
+            query = "UPDATE usuarios SET nome_usuario = %s WHERE id_usuario = %s"
+            cursor.execute(query, (nome_usuario, message.from_user.id))
+            conn.commit()
+
+            bot.send_message(message.chat.id, f"O nome de usuário '{nome_usuario}' foi registrado com sucesso.")
+
+        except mysql.connector.Error as err:
+            bot.send_message(message.chat.id, f"Erro ao registrar nome de usuário: {err}")
+
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if 'conn' in locals():
+                conn.close()
+
+
+# Função para registrar o ID do usuário na tabela 'usuarios'
+def registrar_usuario(id_usuario):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Verificar se o ID do usuário já está registrado
+        query = "SELECT * FROM usuarios WHERE id_usuario = %s"
+        cursor.execute(query, (id_usuario,))
+        resultado = cursor.fetchone()
+
+        if resultado:
+            # O ID do usuário já está registrado, nada precisa ser feito
+            return
+
+        # Registrar o ID do usuário na tabela 'usuarios'
+        query = "INSERT INTO usuarios (id_usuario) VALUES (%s)"
+        cursor.execute(query, (id_usuario,))
+        conn.commit()
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao registrar usuário: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+def buscar_carta_aleatoria_por_subcategoria(subcategoria):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        query = "SELECT id, nome, imagem FROM personagens WHERE subcategoria = %s ORDER BY RAND() LIMIT 1"
+        cursor.execute(query, (subcategoria,))
+        resultado = cursor.fetchone()
+
+        return resultado
+
+    except mysql.connector.Error as err:
+        print(f"Erro ao buscar carta por subcategoria: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+@bot.message_handler(commands=['start'])
+def start_comando(message):
+    # Registrar o ID do usuário na tabela 'usuarios'
+    registrar_usuario(message.from_user.id)
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    image_path = "imagens/Normal/halsey.jpeg"  # Defina o caminho correto para a imagem
+    with open(image_path, 'rb') as photo:
+        bot.send_photo(message.chat.id, photo, caption='Seja muito bem vindo ao giralá! entre e fique a vontade',
+                       reply_markup=keyboard)
+
+@bot.message_handler(commands=['gnome'])
+def gnome_command(message):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Extrai o nome do personagem da mensagem recebida
+        name = message.text.replace('/gnome', '').strip()
+
+        # Consulta os dados dos personagens que contenham a palavra buscada
+        cursor.execute("SELECT * FROM personagens WHERE nome LIKE %s", ('%' + name + '%',))
+        character_data = cursor.fetchall()
+
+        if character_data:
+            # Armazena os resultados da pesquisa em uma variável global do bot
+            bot.character_results = character_data
+            bot.current_page = 0  # Define a página inicial como 0 (primeiro resultado)
+
+            # Mostra o primeiro resultado
+            index = bot.current_page
+            character = character_data[index]
+            id = character[0]
+            resposta, imagem, nome, subcategoria = consultar_dados(id)
+
+            if resposta is not None:
+                response_message = f"{resposta}\n\n{nome}\n\n"
+
+                keyboard = types.InlineKeyboardMarkup()
+
+                # Botão ">" para próxima página
+                next_button = types.InlineKeyboardButton(">", callback_data=f"next")
+                keyboard.add(next_button)
+
+                # Envia a mensagem com o resultado e o botão de próxima página
+                bot.send_photo(chat_id=message.chat.id, photo=imagem, caption=response_message, reply_markup=keyboard)
+
+            else:
+                bot.send_message(message.chat.id, f"Não foi possível obter os dados do personagem.")
+
+        else:
+            # Informa que nenhum personagem foi encontrado
+            bot.send_message(message.chat.id, f"Nenhum personagem encontrado com a palavra '{name}'.")
+
+    except mysql.connector.Error as err:
+        bot.send_message(message.chat.id, f"Erro ao obter os dados dos personagens: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith(('prev_', 'next_')))
+def handle_pagination(call):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        # Extrai a ação do callback (prev ou next)
+        action = call.data.split('_')[0]
+
+        # Obtém o número da página atual
+        current_page = bot.current_page
+
+        # Obtém os resultados da pesquisa armazenados
+        character_data = bot.character_results
+
+        if character_data:
+            if action == 'next':
+                # Próxima página
+                current_page += 1
+            elif action == 'prev':
+                # Página anterior
+                current_page -= 1
+
+            if 0 <= current_page < len(character_data):
+                # Atualiza o número da página atual
+                bot.current_page = current_page
+
+                # Obtém os dados do personagem correspondente à nova página
+                index = current_page
+                character = character_data[index]
+                id = character[0]
+                resposta, imagem, nome, subcategoria = consultar_dados(id)
+
+                if resposta is not None:
+                    response_message = f"{resposta}\n\n{nome}\n\n"
+
+                    keyboard = types.InlineKeyboardMarkup()
+
+                    # Botão "<" para página anterior
+                    if current_page > 0:
+                        prev_button = types.InlineKeyboardButton("<", callback_data=f"prev")
+                        keyboard.add(prev_button)
+
+                    # Botão ">" para próxima página
+                    if index + 1 < len(character_data):
+                        next_button = types.InlineKeyboardButton(">", callback_data=f"next")
+                        keyboard.add(next_button)
+
+                    # Edita a mensagem existente com o resultado e os botões de paginação
+                    bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                             caption=response_message, reply_markup=keyboard)
+
+                else:
+                    bot.send_message(call.message.chat.id, f"Não foi possível obter os dados do personagem.")
+
+            else:
+                # Página inválida, nenhum personagem para exibir
+                bot.send_message(call.message.chat.id, f"Nenhuma correspondência encontrada na página {current_page + 1}.")
+
+        else:
+            # Informa que nenhum personagem foi encontrado
+            bot.send_message(call.message.chat.id, "Nenhum personagem encontrado.")
+
+    except mysql.connector.Error as err:
+        bot.send_message(call.message.chat.id, f"Erro ao obter os dados dos personagens: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+def edit_character_result(bot, chat_id, message_id, caption, reply_markup, image_url):
+    image_data = requests.get(image_url).content
+    bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=caption, reply_markup=reply_markup)
+    bot.edit_message_media(chat_id=chat_id, message_id=message_id, media=types.InputMediaPhoto(image_data))
+
+def add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria):
+    try:
+        # Register the new card in the user's inventory
+        cursor.execute(
+            "INSERT INTO inventario (id_personagem, id_usuario, nome, subcategoria, quantidade) VALUES (%s, %s, %s, %s, 1)",
+            (id_personagem, id_usuario, nome, subcategoria))
+        conn.commit()
+    except mysql.connector.Error as err:
+        bot.send_message(message.chat.id, f"Error while adding card to the database: {err}")
+
+
+def update_inventory_quantity(cursor, conn, id_personagem, id_usuario, nome, subcategoria):
+    try:
+        # Increment the quantity of the existing card
+        cursor.execute(
+            "UPDATE inventario SET quantidade = quantidade + 1 WHERE id_personagem = %s AND id_usuario = %s",
+            (id_personagem, id_usuario))
+        conn.commit()
+        existing_row = cursor.fetchone()
+        if existing_row is not None:
+            bot.send_message(message.chat.id, "Updated quantity in inventory: {}".format(existing_row[4] + 1))
+    except mysql.connector.Error as err:
+        bot.send_message(message.chat.id, f"Error while updating inventory quantity: {err}")
+
+
+@bot.message_handler(commands=['gnome'])
+def gnome_command(message):
+    nome = message.text.replace('/gnome', '').strip()
+
+    if nome:
+        resposta, imagem = consultar_personagem_por_nome(nome)  # Passa o objeto message como parâmetro
+        if imagem is not None:
+            with open(imagem, 'rb') as photo:
+                bot.send_photo(chat_id=message.chat.id, photo=photo, caption=resposta)
+        else:
+            bot.send_message(chat_id=message.chat.id, text=resposta)
+    else:
+        bot.send_message(chat_id=message.chat.id, text="O comando /gnome deve ser acompanhado de um nome.")
+
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('categoria_'))
+def categoria_callback(call):
+    categoria = call.data.replace('categoria_', '')
+
+    subcategorias = buscar_subcategorias(categoria)
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        keyboard = telebot.types.InlineKeyboardMarkup()
+
+        for subcategoria in subcategorias:
+            button = telebot.types.InlineKeyboardButton(subcategoria, callback_data='subcategoria_' + subcategoria)
+            keyboard.add(button)
+
+        try:
+            bot.edit_message_text('Selecione uma subcategoria:', call.message.chat.id, call.message.message_id,
+                                  reply_markup=keyboard)
+        except telebot.apihelper.ApiTelegramException:
+            pass
+    else:
+        bot.send_message(call.message.chat.id, "Nenhuma subcategoria encontrada para a categoria selecionada.")
+
+
+def gerar_carta_sorteada(subcategoria, chat_id):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        query = "SELECT id, nome, imagem FROM cartas WHERE subcategoria = %s"
+        cursor.execute(query, (subcategoria,))
+        cartas = cursor.fetchall()
+
+        if cartas:
+            carta_aleatoria = random.choice(cartas)
+            id_carta, nome_carta, imagem_carta = carta_aleatoria
+
+            resposta = f"Carta encontrada:\nID: {id_carta}\nNome: {nome_carta}"
+
+            with open(imagem_carta, 'rb') as photo:
+                bot.send_photo(chat_id, photo, caption=resposta)
+
+        else:
+            bot.send_message(chat_id, f"Nenhuma carta encontrada para a subcategoria '{subcategoria}'.")
+
+    except mysql.connector.Error as err:
+        bot.send_message(chat_id, f"Erro ao buscar cartas: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+@bot.message_handler(commands=['pescar'])
+def pescar(message):
+    keyboard = telebot.types.InlineKeyboardMarkup()
+
+    # Primeira coluna
+    primeira_coluna = [
+        telebot.types.InlineKeyboardButton(text="🍃  Música", callback_data='pescar_musica'),
+        telebot.types.InlineKeyboardButton(text="🍄  Filmes", callback_data='pescar_filmes'),
+        telebot.types.InlineKeyboardButton(text="🍁  Jogos", callback_data='pescar_jogos')
+    ]
+
+    # Segunda coluna
+    segunda_coluna = [
+        telebot.types.InlineKeyboardButton(text="🪹  Animanga", callback_data='pescar_animanga'),
+        telebot.types.InlineKeyboardButton(text="🪨  Séries", callback_data='pescar_series'),
+        telebot.types.InlineKeyboardButton(text="🌾  Miscelânea", callback_data='pescar_miscelanea')
+    ]
+
+    keyboard.add(*primeira_coluna)
+    keyboard.add(*segunda_coluna)
+
+    # Botão "Geral"
+    keyboard.row(telebot.types.InlineKeyboardButton(text="🫧  Geral", callback_data='pescar_geral'))
+
+    # Imagem
+    image_path = "imagens/Normal/halsey.jpeg"  # Defina o caminho correto para a imagem
+    with open(image_path, 'rb') as photo:
+        bot.send_photo(message.chat.id, photo, caption='Selecione uma categoria:', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    print("callback", call.data)
+    message = call.message
+    conn = mysql.connector.connect(**db_config())
+    cursor = conn.cursor()
+    id_usuario = message.from_user.id
+
+    print("callback", call.data)
+    if call.message:
+        if call.data.startswith('pescar_'):
+            categoria = call.data.replace('pescar_', '')
+            categoria_handler(call.message, categoria)
+
+        elif call.data.startswith('gmusica'):
+            subcategoria = call.data.replace('gmusica_', '')
+            id_personagem_query = "SELECT id FROM personagens WHERE subcategoria = %s"
+            cursor.execute(id_personagem_query, (subcategoria,))
+            results = cursor.fetchall()
+            id_personagem = results[0][0]
+
+            subcategoria_handler(message, subcategoria, cursor, conn, id_personagem, id_usuario)
+@bot.message_handler(commands=['iscas'])
+def iscas_command(message):
+    message_id = message.message_id
+    quantidadegiros(message_id, message)  # Pass the 'message' object as an argument
+
+def quantidadegiros(message_id, message):  # Add 'message' as a parameter
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+        # Consultar o valor de "ultimogiro" e "qntdgiros" com base no "id_mensagem"
+        cursor.execute("SELECT ultimogiro, qntdgiros FROM giros WHERE id_mensagem = %s", (message_id,))
+        result = cursor.fetchone()
+
+        if result:
+            ultimogiro, qntdgiros = result
+
+            # Calcular a diferença de tempo em relação ao horário atual
+            horario_atual = datetime.now()
+            diff = horario_atual - ultimogiro
+
+            # Calcular a quantidade de giros a adicionar
+            if qntdgiros == 0:
+                qntdgiros = diff.total_seconds() // 2
+            else:
+                qntdgiros += diff.total_seconds() // 2
+
+            # Atualizar o valor de "ultimogiro" e "qntdgiros" no banco de dados
+            cursor.execute("UPDATE giros SET ultimogiro = %s, qntdgiros = %s WHERE id_mensagem = %s",
+                           (horario_atual, qntdgiros, message_id))
+            conn.commit()
+
+            # Exibir a mensagem com o número de giros
+            bot.send_message(message.chat.id, f"Você tem {qntdgiros} giros.")
+        else:
+            # A mensagem não foi encontrada na tabela giros
+            bot.send_message(message.chat.id, "Mensagem não encontrada.")
+
+
+    except mysql.connector.Error as err:
+
+        bot.send_message(message.chat.id, f"Erro ao consultar os giros: {err}")
+
+
+    finally:
+
+        if 'cursor' in locals():
+            cursor.close()
+
+        if 'conn' in locals():
+            conn.close()
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import mysql.connector
+
+@bot.message_handler(commands=['cenourar'])
+def cenourar_command(message):
+    # Pergunta o ID da carta ao usuário
+    bot.send_message(message.chat.id, "Digite o ID da carta que deseja cenourar:")
+
+    # Define um novo estado de conversa para aguardar a resposta do ID da carta
+    bot.register_next_step_handler(message, process_card_id)
+
+def process_card_id(message):
+    try:
+        # Obtém o ID da carta fornecido pelo usuário
+        card_id = int(message.text)
+
+        # Consulta o inventário para verificar se o usuário possui a carta com o ID informado
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM inventario WHERE usuario_id = %s AND carta_id = %s", (message.from_user.id, card_id))
+        inventory_data = cursor.fetchone()
+
+        if inventory_data:
+            card_id, user_id, quantity = inventory_data
+
+            # Obtém os detalhes da carta para exibir na mensagem
+            cursor.execute("SELECT id, nome, subcategoria FROM cartas WHERE id = %s", (card_id,))
+            card_details = cursor.fetchone()
+            card_id, card_name, card_subcategory = card_details
+
+            # Cria os botões de confirmação (sim e não) com os respectivos dados da carta
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Sim", callback_data=f"cenourar_{card_id}")],
+                [InlineKeyboardButton("Não", callback_data="cancelar")]
+            ])
+
+            # Monta a mensagem de confirmação com os dados da carta
+            message_text = f"Deseja cenourar essa carta?\n\nID: {card_id}\nNome: {card_name}\nSubcategoria: {card_subcategory}"
+
+            # Envia a mensagem de confirmação com os botões de ação
+            bot.send_message(message.chat.id, message_text, reply_markup=keyboard)
+
+        else:
+            # Informa ao usuário que ele não possui a carta
+            bot.send_message(message.chat.id, "Você não possui essa carta no inventário.")
+
+    except ValueError:
+        # Informa ao usuário que o ID da carta fornecido é inválido
+        bot.send_message(message.chat.id, "ID da carta inválido.")
+
+    except mysql.connector.Error as err:
+        # Informa ao usuário caso ocorra um erro na consulta ao banco de dados
+        bot.send_message(message.chat.id, f"Erro ao consultar o inventário: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cenourar_'))
+def handle_cenourar_callback(call):
+    try:
+        # Extrai o ID da carta do callback data
+        card_id = int(call.data.split('_')[1])
+
+        # Obtém os detalhes da carta para verificação adicional
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, usuario_id, quantidade FROM inventario WHERE usuario_id = %s AND carta_id = %s", (call.from_user.id, card_id))
+        inventory_data = cursor.fetchone()
+
+        if inventory_data:
+            card_id, user_id, quantity = inventory_data
+
+            if quantity == 1:
+                # Remove a carta do inventário, já que a quantidade é 1
+                cursor.execute("DELETE FROM inventario WHERE usuario_id = %s AND carta_id = %s", (user_id, card_id))
+
+            else:
+                # Decrementa a quantidade da carta em 1
+                cursor.execute("UPDATE inventario SET quantidade = quantidade - 1 WHERE usuario_id = %s AND carta_id = %s", (user_id, card_id))
+
+            # Incrementa a quantidade de cenouras na tabela de usuários
+            cursor.execute("UPDATE usuarios SET cenouras = cenouras + 1 WHERE id = %s", (user_id,))
+
+            # Confirma as alterações no banco de dados
+            conn.commit()
+
+            # Informa ao usuário que a carta foi cenourada com sucesso
+            bot.send_message(call.message.chat.id, "Carta cenourada com sucesso!")
+
+        else:
+            # Informa ao usuário que ele não possui mais a carta no inventário
+            bot.send_message(call.message.chat.id, "Você não possui mais essa carta no inventário.")
+
+    except mysql.connector.Error as err:
+        # Informa ao usuário caso ocorra um erro na consulta ao banco de dados
+        bot.send_message(call.message.chat.id, f"Erro ao cenourar a carta: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+bot_id = bot.get_me().id
+
+@bot.message_handler(func=lambda message: message.reply_to_message is not None and message.reply_to_message.from_user.id == bot_id)
+def picnic_command(message):
+
+    conn = mysql.connector.connect(**db_config())
+    cursor = conn.cursor()
+
+    # ID da mensagem que está sendo respondida
+    replied_message_id = message.reply_to_message.message_id
+
+    # ID do usuário que acionou o comando
+    user_id = message.from_user.id
+
+    # ID do usuário que recebeu a mensagem
+    partner_id = message.reply_to_message.from_user.id
+
+    # IDs das cartas
+    first_card_id, second_card_id = message.text.split()[1:]
+
+    # Verifica se a primeira carta existe no inventário do usuário
+    query = f"SELECT COUNT(*) FROM inventario WHERE id_personagem = {first_card_id} AND id_usuario = {user_id}"
+    cursor.execute(query)
+    first_card_count = cursor.fetchone()[0]
+
+    # Verifica se a segunda carta existe no inventário do parceiro de troca
+    query = f"SELECT COUNT(*) FROM inventario WHERE id_personagem = {second_card_id} AND id_usuario = {partner_id}"
+    cursor.execute(query)
+    second_card_count = cursor.fetchone()[0]
+
+    if first_card_count == 0:
+        bot.reply_to(message, "A carta não foi encontrada no seu inventário.")
+    elif second_card_count == 0:
+        bot.reply_to(message, "A carta não foi encontrada no inventário do parceiro de troca.")
+    else:
+        # Envia uma mensagem para confirmar a troca
+        confirmation_message = f"{message.from_user.mention} deseja aceitar essa troca? Responda com 'sim' ou 'não'."
+        bot.reply_to(message.reply_to_message, confirmation_message)
+
+        # Aguarda a resposta da confirmação da troca
+        @bot.message_handler(func=lambda message: message.reply_to_message.message_id == replied_message_id)
+        def trade_confirmation(message):
+            if message.text.lower() == "sim":
+                # Realiza a troca no banco de dados
+                query = f"UPDATE inventario SET id_usuario = CASE WHEN id_usuario = {user_id} THEN {partner_id} ELSE {user_id} END WHERE id_personagem IN ({first_card_id}, {second_card_id}) AND id_usuario IN ({user_id}, {partner_id})"
+                cursor.execute(query)
+                conn.commit()
+                bot.reply_to(message, "Troca realizada com sucesso!")
+            else:
+                bot.reply_to(message, "Troca cancelada.")
+
+    cursor.close()
+    conn.close()
+
+
+@bot.message_handler(commands=['armazem'])
+def armazem_command(message):
+    conn = mysql.connector.connect(**db_config())
+    cursor = conn.cursor()
+
+    # Obtém o ID do usuário que acionou o comando
+    id_usuario = message.from_user.id
+
+    # Busca as cartas do usuário
+    cartas_usuario = buscar_cartas_usuario(id_usuario)
+
+    # Verifica se o usuário possui cartas
+    if cartas_usuario:
+        resposta = "💌 | Cartas no armazém:\n"
+        for id_carta in cartas_usuario:
+            # Consulta SQL para obter os dados da carta
+            query = f"SELECT nome, subcategoria, quantidade FROM inventario WHERE id_personagem = {id_carta} AND id_usuario = {id_usuario}"
+            cursor.execute(query)
+            carta = cursor.fetchone()
+
+            nome_carta = carta[0]
+            subcategoria_carta = carta[1]
+            quantidade_carta = carta[2]
+
+            # Verificação da quantidade
+            if quantidade_carta is None:
+                quantidade_carta = 0
+
+            # Mapear a quantidade para as letras correspondentes com espaçamento
+            if quantidade_carta == 1:
+                letra_quantidade = "🍀"
+            elif 2 <= quantidade_carta <= 4:
+                letra_quantidade = "🍄"
+            elif 5 <= quantidade_carta <= 9:
+                letra_quantidade = "🕯"
+            elif 10 <= quantidade_carta <= 19:
+                letra_quantidade = "🫐"
+            elif 20 <= quantidade_carta <= 29:
+                letra_quantidade = "🧚‍♀️"
+            elif 30 <= quantidade_carta <= 39:
+                letra_quantidade = "🌙"
+            elif 40 <= quantidade_carta <= 49:
+                letra_quantidade = "🔮"
+            elif 50 <= quantidade_carta <= 99:
+                letra_quantidade = "👑"
+            else:
+                letra_quantidade = "👑"
+
+            resposta += f" {id_carta} - {nome_carta} de {subcategoria_carta} {letra_quantidade} \n"
+
+        bot.send_message(message.chat.id, resposta)
+    else:
+        bot.send_message(message.chat.id, "Você não possui cartas no armazém.")
+
+
+def categoria_handler(message, categoria):
+    try:
+        conn = mysql.connector.connect(**db_config())
+        cursor = conn.cursor()
+
+        subcategorias = buscar_subcategorias(categoria)
+
+        subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+        if subcategorias:
+            resposta = "E o universo sorteou:\n\n"
+            subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+
+
+            keyboard = telebot.types.InlineKeyboardMarkup()
+
+            for i in range(0, 4):
+                button = telebot.types.InlineKeyboardButton(text=subcategorias_aleatorias[i], callback_data="gmusica_"+subcategorias_aleatorias[i])
+                keyboard.add(button)
+
+            bot.send_message(message.chat.id, resposta, reply_markup=keyboard)
+
+        else:
+            bot.send_message(message.chat.id, f"Nenhuma subcategoria encontrada para a categoria '{categoria}'.")
+
+    except mysql.connector.Error as err:
+        bot.send_message(message.chat.id, f"Erro ao buscar subcategorias: {err}")
+
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+def subcategoria_handler(message, subcategoria, cursor, conn, id_personagem, id_usuario):
+    print('subcategoria_handler', subcategoria)
+
+    cartas_disponiveis = obter_cartas_por_subcategoria(subcategoria, conn)
+
+    if cartas_disponiveis:
+        carta_aleatoria = random.choice(cartas_disponiveis)
+        id, nome, imagem = carta_aleatoria
+
+        add_to_inventory(cursor, conn, id_personagem, id_usuario, nome, subcategoria)  # Pass 'call' as an argument
+
+
+        if imagem is None:
+            bot.send_message(message.chat.id, f"{nome} - (A carta não tem imagem)")
+        else:
+            bot.send_photo(message.chat.id, imagem, caption=nome)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma carta disponível nessa subcategoria.")
+
+
+
+
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    numero_selecionado = call.data
+
+    subcategorias = buscar_subcategorias("musica")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if int(numero_selecionado) in range(1, len(subcategorias) + 1):
+        texto_selecionado = subcategorias[int(numero_selecionado) - 1]
+        resposta = f"Você selecionou o número {numero_selecionado} - {texto_selecionado}."
+    else:
+        resposta = "Opção inválida."
+
+    bot.answer_callback_query(call.id, resposta)
+
+@bot.message_handler(commands=['gfilme'])
+def gfilme(message):
+    subcategorias = buscar_subcategorias("filmes")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        resposta = "E o universo sorteou:\n \n"
+        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            resposta += f"{i} {subcategoria}\n"
+        markup = types.InlineKeyboardMarkup()
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            button = types.InlineKeyboardButton(text=str(i), callback_data=str(i))
+            markup.add(button)
+        subresposta = "\nQual desses você vai escolher?\n"
+        bot.send_message(message.chat.id, resposta + subresposta, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Filmes'.")
+
+
+@bot.message_handler(commands=['gseries'])
+def gserie(message):
+    subcategorias = buscar_subcategorias("series")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        resposta = "E o universo sorteou:\n"
+        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            resposta += f"{i} {subcategoria}\n"
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("1", "2", "3", "4")
+
+        bot.send_message(message.chat.id, resposta, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Séries'.")
+
+
+@bot.message_handler(commands=['gjogo'])
+def gjogo(message):
+    subcategorias = buscar_subcategorias("jogos")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        resposta = "E o universo sorteou:\n"
+        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            resposta += f"{i} {subcategoria}\n"
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("1", "2", "3", "4")
+
+        bot.send_message(message.chat.id, resposta, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Jogos'.")
+
+
+@bot.message_handler(commands=['ganime'])
+def ganime(message):
+    subcategorias = buscar_subcategorias("animanga")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        resposta = "E o universo sorteou:\n"
+        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            resposta += f"{i} {subcategoria}\n"
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("1", "2", "3", "4")
+
+        bot.send_message(message.chat.id, resposta, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Animanga'.")
+
+
+@bot.message_handler(commands=['gmisc'])
+def gmisc(message, cursor=None, conn=None):
+    subcategorias = buscar_subcategorias("miscelanea")
+    subcategorias = [subcategoria for subcategoria in subcategorias if subcategoria]
+
+    if subcategorias:
+        resposta = "E o universo sorteou:\n"
+        subcategorias_aleatorias = random.sample(subcategorias, min(4, len(subcategorias)))
+        for i, subcategoria in enumerate(subcategorias_aleatorias, start=1):
+            resposta += f"{i} {subcategoria}\n"
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("1", "2", "3", "4")
+
+        bot.send_message(message.chat.id, resposta, reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Nenhuma subcategoria encontrada para a categoria 'Miscelânea'.")
+
+    @bot.message_handler(commands=['gserial'])
+    def handle_gserie_command(message):
+        subcategoria = message.text.replace('/gserial', '').strip()
+        lista_personagens = consultar_personagens_subcategoria(subcategoria)
+
+        if isinstance(lista_personagens, list):
+            response = "\n".join(lista_personagens)
+        else:
+            response = lista_personagens
+
+        bot.reply_to(message, response)
+
+    cursor.close()
+    conn.close()
+
+
+
+bot.polling()
+
+if __name__ == "__main__":
+    main()
